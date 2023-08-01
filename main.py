@@ -1,67 +1,79 @@
 from flask import Flask  # request
-from flask_restful import Resource, Api, reqparse, abort
+from flask_restful import Resource, Api, reqparse, abort,fields,marshal_with
 from flask_sqlalchemy import SQLAlchemy
 
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+db = SQLAlchemy(app)
+class StudentsModel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    dept = db.Column(db.String(100), nullable=False)
+    session = db.Column(db.String(100), nullable=False)
 
-def create_app():
-    app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-    db = SQLAlchemy(app)
-    class StudentsModel(db.Model):
-        id = db.Column(db.Integer, primary_key=True)
-        name = db.Column(db.String(100), nullable=False)
-        dept = db.Column(db.String(100), nullable=False)
-        session = db.Column(db.String(100), nullable=False)
+    def __repr__(self):
+        return f"student(name={name},dept={dept},session={session})"
 
-        def __repr__(self):
-            return f"student(name={name},dept={dept},session={session})"
-
-    with app.app_context():
-        db.create_all()
-
-    return app
-
-
-app = create_app()
 api = Api(app)
 
-# names ={ "nowkshi":{"age":25,"gender":"female"},
-#          "arman":{"age":25,"gender":"male"}}
 student_info = reqparse.RequestParser()
 student_info.add_argument("name", type=str, help="name value", required=True)
 student_info.add_argument("dept", type=str, help="dept value", required=True)
 student_info.add_argument("session", type=str, help="session value", required=True)
 
-class Students(Resource):
-    def put(self, student_no):
-        student_exits(student_no)
-        student = student_info.parse_args()
-        students_dictionary[student_no] = student
-        # print(students_dictionary[student_no])
-        return students_dictionary[student_no], 201
+resource_fields = {
+    'id':fields.Integer,
+    'name':fields.String,
+    'dept':fields.String,
+    'session':fields.String
 
+}
+class Students(Resource):
+    @marshal_with(resource_fields)
+    def put(self, student_no):
+        student = student_info.parse_args()
+        result = StudentsModel.query.filter_by(id=student_no).first()
+        if result:
+            abort(400,messege="id already exist")
+        student_db =StudentsModel(id=student_no,name=student['name'],dept=student['dept'],session=student['session'])
+        db.session.add(student_db)
+        db.session.commit()
+        return student_db, 201
+
+    @marshal_with(resource_fields)
     def get(self, student_no):
-        result=studenModel
-        return students_dictionary[student_no]
+        result=StudentsModel.query.filter_by(id=student_no).first()
+        if not result:
+            abort(404,messege="id dont exist")
+        return result,200
+    @marshal_with(resource_fields)
+    def patch(self,student_no) :
+        student = student_info.parse_args()
+        result = StudentsModel.query.filter_by(id=student_no).first()
+        if not result:
+            abort(404, messege="not valid id")
+        if 'name' in student:
+            result.name=student['name']
+        if 'dept' in student:
+            result.dept=student['dept']
+        if 'session' in student:
+            result.session=student['session']
+        db.session.add(result)
+        db.session.commit()
+        return result
 
     def delete(self, student_no):
-        not_correct_student_id_thn_abort(student_no)
-        del students_dictionary[student_no]
-        return "deleted succesfully", 200
+        student = StudentsModel.query.filter_by(id=student_no).first()
+        if not student:
+            abort(404, message="Student not found")
+        db.session.delete(student)
+        db.session.commit()
+
+        return "Student deleted successfully", 200
 
 
-api.add_resource(Students, "/add_student/<string:student_no>")
+api.add_resource(Students, "/add_student/<int:student_no>")
 
-# class First(Resource):
-#     def get(self,name):
-#        print(names[name])
-# api.add_resource(First, "/first/<string:name>")
-#
-# class Second(Resource):
-
-#     def put(self):
-#         print(request.form["nowkshi"])
-# api.add_resource(Second,"/second")
 
 if __name__ == "__main__":
     app.run(debug=True)
